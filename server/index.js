@@ -7,15 +7,27 @@ import { createChaosDirector } from './aiProvider.js';
 import { sanitizeGameState, sanitizeRecentEvents } from './requestValidation.js';
 
 const PORT = Number(process.env.PORT ?? 8787);
+const env = (k) => process.env[k]?.trim() || undefined;
 const director = createChaosDirector({
-  apiKey: process.env.GEMINI_API_KEY?.trim(),
-  model: process.env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash',
-  timeoutMs: Math.min(15000, Math.max(1000, Number(process.env.AI_TIMEOUT_MS) || 4000)),
+  provider: env('AI_PROVIDER')?.toLowerCase(),
+  apiKey: env('GEMINI_API_KEY'),
+  model: env('GEMINI_MODEL') || 'gemma-4-26b-a4b-it',
+  ollamaUrl: env('OLLAMA_URL') || 'http://127.0.0.1:11434',
+  ollamaModel: env('OLLAMA_MODEL'),
+  timeoutMs: Math.min(120000, Math.max(1000, Number(env('AI_TIMEOUT_MS')) || 10000)),
 });
+
+// Arena screenshots arrive as small JPEG data URLs; anything else is dropped.
+const SNAPSHOT_RE = /^data:image\/jpeg;base64,([A-Za-z0-9+/]+={0,2})$/;
+const SNAPSHOT_MAX_CHARS = 200_000;
+function sanitizeSnapshot(raw) {
+  if (typeof raw !== 'string' || raw.length > SNAPSHOT_MAX_CHARS) return undefined;
+  return SNAPSHOT_RE.exec(raw)?.[1];
+}
 
 const app = express();
 app.disable('x-powered-by');
-app.use(express.json({ limit: '8kb' }));
+app.use(express.json({ limit: '256kb' }));
 
 // Tiny per-IP limiter so a stuck client can't burn through API quota.
 const hits = new Map();
@@ -30,20 +42,33 @@ function rateLimit(req, res, next) {
 }
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, aiConfigured: director.configured, model: director.configured ? director.model : null });
+  res.json({
+    ok: true,
+    aiConfigured: director.configured,
+    provider: director.provider,
+    model: director.model,
+    vision: director.configured,
+    timeoutMs: director.timeoutMs,
+  });
 });
 
 app.post('/api/chaos-event', rateLimit, async (req, res) => {
   if (!director.configured) {
-    return res.status(503).json({ error: 'ai_not_configured', message: 'No GEMINI_API_KEY on the server' });
+    return res.status(503).json({ error: 'ai_not_configured', message: 'No GEMINI_API_KEY or OLLAMA_MODEL on the server' });
   }
   const gameState = sanitizeGameState(req.body?.gameState);
   const recentEvents = sanitizeRecentEvents(req.body?.recentEvents);
+  const snapshot = sanitizeSnapshot(req.body?.snapshot);
+  const clientGone = new AbortController();
+  res.on('close', () => {
+    if (!res.writableFinished) clientGone.abort();
+  });
   try {
-    const { event, latencyMs } = await director.generate(gameState, recentEvents);
-    res.json({ event, source: 'ai', model: director.model, latencyMs });
+    const { event, latencyMs, usedVision } = await director.generate(gameState, recentEvents, snapshot, clientGone.signal);
+    res.json({ event, source: 'ai', provider: director.provider, model: director.model, latencyMs, vision: usedVision });
   } catch (err) {
     console.warn(`[chaos-director] ${err.code ?? 'error'}: ${err.message}`);
+    if (clientGone.signal.aborted) return;
     res.status(502).json({ error: err.code ?? 'ai_request_failed' });
   }
 });
@@ -56,6 +81,6 @@ if (fs.existsSync(distDir)) {
 
 app.listen(PORT, () => {
   console.log(
-    `[chaos-theory] API on http://localhost:${PORT} — AI ${director.configured ? `configured (${director.model})` : 'not configured, clients use offline events'}`,
+    `[chaos-theory] API on http://localhost:${PORT} — AI ${director.configured ? `configured (${director.provider}: ${director.model}, timeout ${director.timeoutMs}ms)` : 'not configured, clients use offline events'}`,
   );
 });

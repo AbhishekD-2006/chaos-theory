@@ -20,8 +20,13 @@ export function EventBanner({ view }: { view: ActiveEventView }) {
         </h2>
         {event.description && <p className="event-banner__desc">{event.description}</p>}
         <p className="event-banner__hint">{info.hint}</p>
+        {event.taunt && (
+          <p className="event-banner__taunt">
+            <span className="event-banner__taunt-tag">{event.vision ? 'GEMMA SEES YOU' : 'DIRECTOR SAYS'}</span> “{event.taunt}”
+          </p>
+        )}
         <span className={`event-banner__source src-tag src-tag--${event.source}`}>
-          {event.source === 'ai' ? `AI DIRECTOR · ${event.model ?? 'model'}` : 'OFFLINE LIBRARY'}
+          {event.source === 'ai' ? `AI DIRECTOR · ${event.model ?? 'model'}${event.vision ? ' · VISION' : ''}` : 'OFFLINE LIBRARY'}
         </span>
       </div>
     </div>

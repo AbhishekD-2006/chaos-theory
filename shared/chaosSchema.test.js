@@ -49,3 +49,11 @@ test('sanitizes text so model output cannot inject markup', () => {
   assert.ok(r.event.description.length <= 110);
   assert.equal(sanitizeText(42, 10), '');
 });
+
+test('keeps a sanitized, length-limited taunt', () => {
+  const r = validateChaosEvent({ mechanic: 'giant_mode', taunt: '<b>Nice</b> corner camping {lol} ' + 'x'.repeat(200) });
+  assert.equal(r.ok, true);
+  assert.ok(r.event.taunt.startsWith('Nice corner camping lol'));
+  assert.ok(r.event.taunt.length <= 90);
+  assert.equal(validateChaosEvent({ mechanic: 'giant_mode' }).event.taunt, '');
+});
