@@ -153,6 +153,8 @@ export class GameEngine implements World {
     this.acc = 0;
     this.state = 'COUNTDOWN';
     sound.play('tick');
+    chaosService.newRound();
+    this.render(); // the snapshot must show the fresh arena, not the last frame drawn
     chaosService.prefetch(this.directorState(), [], this.snapshot);
     this.emit(true);
   }
@@ -164,6 +166,7 @@ export class GameEngine implements World {
 
   toMenu() {
     this.events.abort(this);
+    chaosService.newRound();
     this.state = 'MENU';
     this.summary = null;
     this.resetAttract();
@@ -223,6 +226,7 @@ export class GameEngine implements World {
       rank,
     };
     this.state = 'GAME_OVER';
+    chaosService.newRound();
     this.shake = 0;
     sound.play(won ? 'win' : 'gameover');
     this.emit(true);

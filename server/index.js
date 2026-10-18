@@ -27,7 +27,6 @@ function sanitizeSnapshot(raw) {
 
 const app = express();
 app.disable('x-powered-by');
-app.use(express.json({ limit: '256kb' }));
 
 // Tiny per-IP limiter so a stuck client can't burn through API quota.
 const hits = new Map();
@@ -52,7 +51,8 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
-app.post('/api/chaos-event', rateLimit, async (req, res) => {
+// Body parsing runs after the limiter so oversized/malformed bodies still count against the quota.
+app.post('/api/chaos-event', rateLimit, express.json({ limit: '256kb' }), async (req, res) => {
   if (!director.configured) {
     return res.status(503).json({ error: 'ai_not_configured', message: 'No GEMINI_API_KEY or OLLAMA_MODEL on the server' });
   }
@@ -71,6 +71,12 @@ app.post('/api/chaos-event', rateLimit, async (req, res) => {
     if (clientGone.signal.aborted) return;
     res.status(502).json({ error: err.code ?? 'ai_request_failed' });
   }
+});
+
+// Malformed or oversized JSON bodies: short JSON error instead of a stack trace per request.
+app.use('/api', (err, _req, res, next) => {
+  if (!err?.type?.startsWith('entity.') && err?.status !== 400) return next(err);
+  res.status(err.status ?? 400).json({ error: 'bad_request' });
 });
 
 const distDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dist');

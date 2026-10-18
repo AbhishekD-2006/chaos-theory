@@ -19,6 +19,7 @@ const STALE_AFTER_MS = 30000;
 const RETRY_BACKOFF_MS = 8000;
 
 interface PendingRequest {
+  controller: AbortController;
   startedAt: number;
   doneAt: number;
   done: boolean;
@@ -44,6 +45,7 @@ class ChaosService {
   private pending: PendingRequest | null = null;
   private retryAfter = 0;
   private clientTimeoutMs = DEFAULT_CLIENT_TIMEOUT_MS;
+  private healthReady: Promise<void> | null = null;
 
   subscribe(fn: (s: AiStatus) => void): () => void {
     this.listeners.add(fn);
@@ -56,7 +58,12 @@ class ChaosService {
     for (const fn of this.listeners) fn(this.status);
   }
 
-  async checkHealth(): Promise<void> {
+  checkHealth(): Promise<void> {
+    this.healthReady = this.fetchHealth();
+    return this.healthReady;
+  }
+
+  private async fetchHealth(): Promise<void> {
     try {
       const res = await fetch('/api/health', { signal: AbortSignal.timeout(2500) });
       const data = (await res.json()) as { aiConfigured?: boolean; model?: string | null; provider?: string | null; timeoutMs?: number };
@@ -74,6 +81,12 @@ class ChaosService {
     }
   }
 
+  /** Drop (and abort) any in-flight or ready event so it can't leak into another round. */
+  newRound() {
+    this.pending?.controller.abort();
+    this.pending = null;
+  }
+
   /**
    * Start fetching the next AI event in the background (no-op if one is in flight).
    * `snapshot` lazily captures a small JPEG of the arena so the model can see the board.
@@ -84,7 +97,7 @@ class ChaosService {
     if (this.pending && !this.pending.done && Date.now() - this.pending.startedAt < this.clientTimeoutMs + 500) return;
     if (this.pending?.event && !this.isStale(this.pending)) return;
 
-    const req: PendingRequest = { startedAt: Date.now(), doneAt: 0, done: false, event: null };
+    const req: PendingRequest = { controller: new AbortController(), startedAt: Date.now(), doneAt: 0, done: false, event: null };
     this.pending = req;
     let image: string | null = null;
     try {
@@ -92,7 +105,8 @@ class ChaosService {
     } catch {
       image = null;
     }
-    void this.requestAiEvent(gameState, recent, image).then((event) => {
+    void this.requestAiEvent(gameState, recent, image, req.controller.signal).then((event) => {
+      if (this.pending !== req) return;
       req.event = event;
       req.done = true;
       req.doneAt = Date.now();
@@ -111,7 +125,23 @@ class ChaosService {
     return generateOfflineEvent(rng, gameState, recent);
   }
 
-  private async requestAiEvent(gameState: DirectorGameState, recent: ChaosEvent[], snapshot: string | null): Promise<ChaosEvent | null> {
+  private async requestAiEvent(
+    gameState: DirectorGameState,
+    recent: ChaosEvent[],
+    snapshot: string | null,
+    cancel: AbortSignal,
+  ): Promise<ChaosEvent | null> {
+    // Wait for /api/health so the timeout matches the server's (local models can be slow).
+    await this.healthReady?.catch(() => undefined);
+    if (cancel.aborted || this.status.configured === false) return null;
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, this.clientTimeoutMs);
+    const onCancel = () => controller.abort();
+    cancel.addEventListener('abort', onCancel, { once: true });
     try {
       const res = await fetch('/api/chaos-event', {
         method: 'POST',
@@ -121,7 +151,7 @@ class ChaosService {
           recentEvents: recent.slice(-5).map((e) => ({ mechanic: e.mechanic, name: e.name })),
           ...(snapshot ? { snapshot } : {}),
         }),
-        signal: AbortSignal.timeout(this.clientTimeoutMs),
+        signal: controller.signal,
       });
       const data = (await res.json().catch(() => ({}))) as {
         event?: unknown;
@@ -131,6 +161,7 @@ class ChaosService {
         vision?: boolean;
         error?: string;
       };
+      if (cancel.aborted) return null;
       if (!res.ok) return this.fail(data.error ?? 'network');
 
       // Validate again on the client: the engine only ever runs allowlisted, clamped events.
@@ -146,9 +177,12 @@ class ChaosService {
       });
       const { taunt, ...rest } = result.event;
       return { ...rest, ...(taunt ? { taunt } : {}), id: nextEventId(), source: 'ai', model: data.model, vision: Boolean(data.vision) };
-    } catch (err) {
-      const timedOut = err instanceof DOMException && (err.name === 'TimeoutError' || err.name === 'AbortError');
+    } catch {
+      if (cancel.aborted && !timedOut) return null;
       return this.fail(timedOut ? 'ai_timeout' : 'network');
+    } finally {
+      clearTimeout(timer);
+      cancel.removeEventListener('abort', onCancel);
     }
   }
 
