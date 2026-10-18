@@ -73,6 +73,12 @@ app.post('/api/chaos-event', rateLimit, express.json({ limit: '256kb' }), async 
   }
 });
 
+// Malformed or oversized JSON bodies: short JSON error instead of a stack trace per request.
+app.use('/api', (err, _req, res, next) => {
+  if (!err?.type?.startsWith('entity.') && err?.status !== 400) return next(err);
+  res.status(err.status ?? 400).json({ error: 'bad_request' });
+});
+
 const distDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dist');
 if (fs.existsSync(distDir)) {
   app.use(express.static(distDir));
