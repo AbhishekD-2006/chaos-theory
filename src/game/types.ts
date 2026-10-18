@@ -13,6 +13,10 @@ export interface ChaosEvent {
   parameters: Record<string, number>;
   source: EventSource;
   model?: string;
+  /** Model one-liner aimed at the player (AI events only). */
+  taunt?: string;
+  /** True when the model was shown an arena screenshot for this event. */
+  vision?: boolean;
 }
 
 export type GameState = 'MENU' | 'COUNTDOWN' | 'PLAYING' | 'EVENT_ANNOUNCEMENT' | 'PAUSED' | 'GAME_OVER';

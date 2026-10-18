@@ -23,6 +23,7 @@ export type MechanicId =
 export interface ValidatedChaosEvent {
   name: string;
   description: string;
+  taunt: string;
   mechanic: MechanicId;
   durationSeconds: number;
   difficulty: number;
@@ -37,6 +38,7 @@ export const DURATION_RANGE: Readonly<{ min: number; max: number }>;
 export const DIFFICULTY_RANGE: Readonly<{ min: number; max: number }>;
 export const NAME_MAX: number;
 export const DESCRIPTION_MAX: number;
+export const TAUNT_MAX: number;
 export const MECHANICS: Readonly<Record<MechanicId, MechanicSpec>>;
 export const MECHANIC_IDS: readonly MechanicId[];
 export function isMechanic(id: unknown): id is MechanicId;

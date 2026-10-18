@@ -153,7 +153,7 @@ export class GameEngine implements World {
     this.acc = 0;
     this.state = 'COUNTDOWN';
     sound.play('tick');
-    chaosService.prefetch(this.directorState(), []);
+    chaosService.prefetch(this.directorState(), [], this.snapshot);
     this.emit(true);
   }
 
@@ -422,7 +422,7 @@ export class GameEngine implements World {
     } else if (signal === 'activated') {
       this.state = 'PLAYING';
       if (this.events.current?.mechanic === 'lava_tiles') sound.play('ignite');
-      chaosService.prefetch(this.directorState(), this.events.history);
+      chaosService.prefetch(this.directorState(), this.events.history, this.snapshot);
       this.emit(true);
     } else if (signal === 'ended') {
       const flawless = !this.events.hitDuringEvent;
@@ -452,6 +452,21 @@ export class GameEngine implements World {
     this.shake *= Math.exp(-dt * 9);
     this.flash = Math.max(0, this.flash - dt * 3);
   }
+
+  private snapCanvas: HTMLCanvasElement | null = null;
+
+  /** Small JPEG of the current arena for the vision-capable chaos director. */
+  private snapshot = (): string | null => {
+    if (!this.snapCanvas) {
+      this.snapCanvas = document.createElement('canvas');
+      this.snapCanvas.width = 448;
+      this.snapCanvas.height = 252;
+    }
+    const ctx = this.snapCanvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(this.canvas, 0, 0, this.snapCanvas.width, this.snapCanvas.height);
+    return this.snapCanvas.toDataURL('image/jpeg', 0.6);
+  };
 
   private directorState(): DirectorGameState {
     return {

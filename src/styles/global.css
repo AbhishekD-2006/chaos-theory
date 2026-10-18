@@ -343,6 +343,8 @@ kbd {
 .event-banner__glyph { color: var(--accent); text-shadow: none; }
 .event-banner__desc { margin: 0 auto 8px; max-width: 760px; font-size: 22px; font-style: italic; color: var(--text); }
 .event-banner__hint { margin: 0 0 10px; font-size: 18px; font-weight: 700; color: var(--accent); }
+.event-banner__taunt { margin: 0 auto 12px; max-width: 760px; font-size: 18px; font-weight: 700; color: var(--lime); }
+.event-banner__taunt-tag { display: inline-block; margin-right: 8px; padding: 2px 8px; border-radius: 4px; font: 400 12px/1.4 var(--display); letter-spacing: 0.08em; color: #0b0a0e; background: var(--lime); vertical-align: 2px; }
 .event-banner__source { font-size: 12px; padding: 3px 10px; }
 
 /* ---------- modals ---------- */

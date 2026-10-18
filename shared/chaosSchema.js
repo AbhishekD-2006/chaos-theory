@@ -6,6 +6,7 @@ export const DURATION_RANGE = Object.freeze({ min: 5, max: 10 });
 export const DIFFICULTY_RANGE = Object.freeze({ min: 1, max: 5 });
 export const NAME_MAX = 28;
 export const DESCRIPTION_MAX = 110;
+export const TAUNT_MAX = 90;
 
 /** @type {Readonly<Record<string, { effect: string, params: Record<string, { min: number, max: number, integer?: boolean, doc: string }> }>>} */
 export const MECHANICS = Object.freeze({
@@ -140,9 +141,10 @@ export function validateChaosEvent(raw) {
 
   const name = sanitizeText(raw.name, NAME_MAX).toUpperCase();
   const description = sanitizeText(raw.description, DESCRIPTION_MAX);
+  const taunt = sanitizeText(raw.taunt, TAUNT_MAX);
 
   return {
     ok: true,
-    event: { name, description, mechanic, durationSeconds, difficulty, parameters },
+    event: { name, description, taunt, mechanic, durationSeconds, difficulty, parameters },
   };
 }
